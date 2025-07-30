@@ -1,19 +1,19 @@
-# This script creates a raw input for the label creator in CVAT
-# based on the metadata.py file.
+# This script generates an SVG file from metadata.py that is ready to upload to CVAT
 import importlib.util
 import json
+import math
+import seaborn as sns
 
+# Loads the metadata.py file
 def load_metadata(metadata_path: str):
     spec = importlib.util.spec_from_file_location("metadata", metadata_path)
     metadata = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(metadata)
     return metadata.dataset_info
 
-def generate_svg_string(dataset_info):
-    keypoint_info = dataset_info["keypoint_info"]
-    skeleton_info = dataset_info["skeleton_info"]
-
-    coordinates = {
+def get_positions(keypoint_info):
+    # Reference layout for mice skeleton
+    reference_coords = {
         "Snout": (23.984416961669922, 70.61769104003906),
         "Right Ear": (22.148021697998047, 60.7679443359375),
         "Right Leg": (32.832496643066406, 43.40567398071289),
@@ -24,99 +24,85 @@ def generate_svg_string(dataset_info):
         "Tailtag": (52.19810485839844, 36.56093215942383),
     }
 
-    colors = [
-        "#33ddff", "#fa3253", "#ffcc33", "#aaf0d1",
-        "#34d1b7", "#ff6037", "#cc9933", "#733380"
-    ]
+    keypoint_names = [kp["name"] for _, kp in sorted(keypoint_info.items())]
+    if all(name in reference_coords for name in keypoint_names):
+        return {name: reference_coords[name] for name in keypoint_names}, "reference"
+    else:
+        # Circular fallback layout
+        n = len(keypoint_names)
+        angle_step = 2 * math.pi / n
+        radius = 35
+        center_x, center_y = 50, 50
+        return {
+            name: (
+                center_x + radius * math.cos(i * angle_step),
+                center_y + radius * math.sin(i * angle_step)
+            )
+            for i, name in enumerate(keypoint_names)
+        }, "fallback"
 
-    name_to_id = {kp["name"]: kp_id + 1 for kp_id, kp in keypoint_info.items()}
-    id_to_name = {kp_id + 1: kp["name"] for kp_id, kp in keypoint_info.items()}
+# Generates SVG
+def generate_svg(dataset_info, output_file="skeleton.svg"):
+    keypoint_info = dataset_info["keypoint_info"]
+    skeleton_info = dataset_info["skeleton_info"]
+    palette = sns.color_palette("hls", len(keypoint_info))
 
-    svg_elements = ['<svg viewBox="0 0 100 100">']
+    name_to_id = {v["name"]: v["id"] + 1 for v in keypoint_info.values()}
+    positions, layout_used = get_positions(keypoint_info)
 
-    # Draw edges
+    svg_lines = ['<svg viewBox="0 0 100 100">']
+    desc = {}
+
+    # Draw skeleton edges
     for skel in skeleton_info.values():
         a, b = skel["link"]
-        x1, y1 = coordinates[a]
-        x2, y2 = coordinates[b]
-        svg_elements.append(
+        if a not in positions or b not in positions:
+            continue  # Skip invalid edges
+        x1, y1 = positions[a]
+        x2, y2 = positions[b]
+        svg_lines.append(
             f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="black" '
-            f'data-type="edge" data-node-from="{name_to_id[a]}" data-node-to="{name_to_id[b]}" '
-            f'stroke-width="0.5"/>'
+            f'data-type="edge" data-node-from="{name_to_id[a]}" stroke-width="0.5" '
+            f'data-node-to="{name_to_id[b]}"/>'
         )
 
     # Draw keypoints
-    for i, (kp_id, kp) in enumerate(keypoint_info.items()):
+    for idx, (kp_id, kp) in enumerate(sorted(keypoint_info.items())):
         name = kp["name"]
-        x, y = coordinates[name]
-        color = colors[i]
-        node_id = name_to_id[name]
-        svg_elements.append(
+        node_id = kp_id + 1
+        x, y = positions[name]
+        color = '#{:02x}{:02x}{:02x}'.format(
+            int(palette[idx][0] * 255),
+            int(palette[idx][1] * 255),
+            int(palette[idx][2] * 255)
+        )
+        svg_lines.append(
             f'<circle r="0.75" cx="{x}" cy="{y}" data-type="element node" '
             f'data-element-id="{node_id}" data-node-id="{node_id}" '
             f'stroke="black" fill="{color}" stroke-width="0.1"/>'
         )
-
-    # Embed description block
-    desc_dict = {}
-    for i, (kp_id, kp) in enumerate(keypoint_info.items()):
-        node_id = str(kp_id + 1)
-        desc_dict[node_id] = {
-            "name": kp["name"],
-            "color": colors[i],
+        desc[str(node_id)] = {
+            "name": name,
+            "color": color,
             "type": "points",
             "attributes": [],
             "has_parent": True
         }
-    svg_elements.append(
-        f'<desc data-description-type="labels-specification">{json.dumps(desc_dict)}</desc>'
+
+    svg_lines.append(
+        f'<desc data-description-type="labels-specification">{json.dumps(desc)}</desc>'
     )
+    svg_lines.append('</svg>')
 
-    svg_elements.append('</svg>')
-    return ''.join(svg_elements)
+    with open(output_file, "w") as f:
+        f.write("\n".join(svg_lines))
 
-def convert_to_json_structure(dataset_info, svg_string):
-    keypoint_info = dataset_info["keypoint_info"]
-    colors = [
-        "#33ddff", "#fa3253", "#ffcc33", "#aaf0d1",
-        "#34d1b7", "#ff6037", "#cc9933", "#733380"
-    ]
-    label_id_start = 0
-    entity_sublabels = []
-    for idx, (kp_id, kp) in enumerate(sorted(keypoint_info.items())):
-        sublabel = {
-            "name": kp["name"],
-            "attributes": [],
-            "type": "points",
-            "color": colors[idx],
-            "id": label_id_start + 2 + idx
-        }
-        entity_sublabels.append(sublabel)
-
-    mouse = {
-        "name": "mouse",
-        "id": label_id_start + 1,
-        "color": "#c02020",
-        "type": "skeleton",
-        "sublabels": entity_sublabels,
-        "svg": svg_string,
-        "attributes": []
-    }
-
-    return [mouse]
+    print(f"SVG saved to {output_file} using {layout_used} layout.")
 
 def main():
     metadata_path = "metadata.py"
-    output_json = "converted_metadata.json"
-
     dataset_info = load_metadata(metadata_path)
-    svg_string = generate_svg_string(dataset_info)
-    labels = convert_to_json_structure(dataset_info, svg_string)
-
-    with open(output_json, "w") as f:
-        json.dump(labels, f, indent=2)
-
-    print(f"Saved to {output_json} with inline SVG.")
+    generate_svg(dataset_info)
 
 if __name__ == "__main__":
     main()
