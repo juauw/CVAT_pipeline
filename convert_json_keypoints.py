@@ -148,9 +148,8 @@ def convert_to_cvat_xml(annotations, metadata, output_file):
     tree.write(output_file, encoding='utf-8', xml_declaration=True)
     print(f"CVAT 1.1 XML file generated successfully: '{output_file}'")
 
-def get_output_path(input_path: str, output_format: str) -> str:
-    base_name = os.path.splitext(os.path.basename(input_path))[0]
-    return f"{base_name}_converted_keypoints.{output_format}"
+def get_output_path(output_format: str) -> str:
+    return f"converted_keypoints.{output_format}"
 
 # Main
 def main():
@@ -171,7 +170,7 @@ def main():
     else:
         raise ValueError("Unsupported input format. Use .json or .csv")
 
-    output_path = "converted_keypoints.json"
+    output_path = get_output_path(args.format)
 
     if args.format == "json":
         new_data = {
