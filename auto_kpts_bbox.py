@@ -1,6 +1,7 @@
 #This script converts a COCO Keypoints 1.0 file to a COCO 1.0 file by estimating
 # bounding boxes based on the modified keypoints. After the script creates a new task
-# and automatically uploads the images and annotations to CVAT
+# and automatically uploads the images and annotations to CVAT. It can also directly
+# upload bounding boxes to CVAT using the COCO 1.0 or CVAT 1.1 format.
 import argparse
 import os
 import json
@@ -8,6 +9,7 @@ from cvat_sdk import make_client
 from cvat_sdk.core.helpers import DeferredTqdmProgressReporter
 import zipfile
 import shutil
+import cv2
 
 # Paths
 zip_path = "corrected_keypoints.zip"
@@ -75,6 +77,22 @@ def keypoints_to_bboxes(keypoints, image_id, category_id, annotation_id):
         "id": annotation_id
     }
 
+# Cuts the video into it's component frames
+def video_to_frames(video_path, output_dir):
+    cap = cv2.VideoCapture(str(video_path))
+    frame_count = 0
+    success, frame = cap.read()
+
+    while success:
+        frame_name = output_dir / f"{frame_count:04d}.jpg"
+        cv2.imwrite(str(frame_name), frame)
+        frame_count += 1
+        success, frame = cap.read()
+
+    cap.release()
+    return sorted(output_dir.glob("*.jpg"))
+
+# Main
 def main():
     parser = argparse.ArgumentParser(description="Convert COCO Keypoints to Bounding Boxes and import to CVAT.")
     parser.add_argument("--host", default="http://localhost:8080", help="CVAT server URL (e.g. http://localhost:8080)")
@@ -82,14 +100,14 @@ def main():
     parser.add_argument("--password", required=True, help="CVAT password")
     parser.add_argument("--task-name", required=True, help="Task name to create in CVAT")
     parser.add_argument("--label-name", default="mouse", help="Label name to assign to bounding boxes")
-    parser.add_argument("--image-folder", required=True, help="Path to folder containing task images")
-    parser.add_argument("--input-json", required=True, help="Path to input COCO Keypoints or Bounding Box JSON")
+    parser.add_argument("--folder", required=True, help="Path to folder containing task images or videos")
+    parser.add_argument("--input", required=True, help="Path to input COCO Keypoints or Bounding Box XML")
     parser.add_argument("--output-json", required=True, help="Path to output COCO Bounding Box JSON (ignored if already in bbox format)")
     args = parser.parse_args()
 
-    skip_conversion = os.path.basename(args.input_json) == "converted_bbox.json"
+    skip_conversion = os.path.basename(args.input) == "converted_bbox.xml"
     if skip_conversion:
-        print("Detected 'converted_bbox.json' — skipping keypoint-to-bbox conversion.")
+        print("Detected 'converted_bbox.xml' — skipping keypoint-to-bbox conversion.")
         args.output_json = args.input_json
     else:
         print("Converting keypoints to bounding boxes...")
@@ -134,7 +152,7 @@ def main():
         print(f"Task created with ID: {task.id}")
 
         task.import_annotations(
-            format_name="COCO 1.0",
+            format_name="CVAT 1.1",
             filename=args.output_json,
             pbar=DeferredTqdmProgressReporter()
         )
