@@ -155,8 +155,8 @@ def get_output_path(output_format: str) -> str:
 def main():
     parser = argparse.ArgumentParser(description="Convert CSV/JSON annotations to COCO or CVAT format.")
     parser.add_argument("input_path", help="Path to input .csv or .json")
-    parser.add_argument("video_path", help="Path to video file to obtain resolution")
     parser.add_argument("metadata", help="Path to metadata.py file")
+    parser.add_argument("--video_path", help="Path to video file to obtain resolution")
     parser.add_argument("--format", choices=["json", "xml"], default="json", help="Output format (default: json)")
     args = parser.parse_args()
 
