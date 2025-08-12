@@ -1,5 +1,5 @@
 # This program takes a file named metadata.py and a .csv or.json file and produces
-# a file named converted_keypoints.json which is compatible with the CVAT keypoints import module.
+# a file named converted_keypoints.json or converted_keypoints.xml which is compatible with the CVAT keypoints import module.
 import json
 import importlib.util
 import argparse
