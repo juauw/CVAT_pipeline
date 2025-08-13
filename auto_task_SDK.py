@@ -1,5 +1,5 @@
 # This script creates a task in CVAT and automatically imports the images associated
-# with the task. The annotations have to be uploaded manually.
+# with the task. The annotations must be uploaded manually.
 import os
 import cv2
 import shutil
@@ -18,11 +18,11 @@ def parse_args():
     parser.add_argument("--env", default=".env", help="Path to .env file")
     parser.add_argument("--username", default="JUAUW", help="CVAT username")
     parser.add_argument("--password", default="Yetisb130^^", help="CVAT password")
-    parser.add_argument("--task", default="CSV", help="Name for the new task")
+    parser.add_argument("--task", default="Keypoint annotation", help="Name for the new task")
     parser.add_argument("--folder", help="Folder with media to upload",
-                        default=r"C:\\Users\\audet\\OneDrive\\Desktop\\ULaval\\Stage 2025\\Code")
-    parser.add_argument("--keypoints", default=r"C:\\Users\\audet\\OneDrive\\Desktop\\ULaval\\Stage 2025\\Code\\kpts.csv",
-                         help="Path to keypoints.csv or keypoints.json file")
+                        default=r"C:\\Users\\audet\\OneDrive\\Desktop\\ULaval\\Stage 2025\\CVAT_pipeline")
+    parser.add_argument("--annotations", default=r"C:\\Users\\audet\\OneDrive\\Desktop\\ULaval\\Stage 2025\\CVAT_pipeline\\kpts.csv",
+                         help="Path to annotations.csv or annotations.json file")
     return parser.parse_args()
 
 def load_config():
@@ -68,41 +68,12 @@ def main():
     load_dotenv(args.env)
     config = load_config()
 
-    # Define paths
-    input_csv_or_json = args.keypoints
-    metadata_path = "metadata.py"
-    output_path = "converted_keypoints.json"
-    video_or_image_folder = None
-    for ext in [".mp4", ".avi", ".mov", ".mkv"]:
-        video_candidates = list(Path(args.folder).glob(f"*{ext}"))
-        if video_candidates:
-            video_or_image_folder = str(video_candidates[0])
-            break
-
-    if not video_or_image_folder:
-        print("No video file found in the specified folder for resolution extraction.")
-        return
-
     # Run raw.py
     try:
         print("Running raw.py...")
         subprocess.run([sys.executable, "raw.py"], check=True)
     except subprocess.CalledProcessError as e:
         print(f"Error running raw.py: {e}")
-        return
-
-    # Run convert_json_keypoints.py
-    try:
-        print("Running convert_json_keypoints.py...")
-        subprocess.run([
-    sys.executable,
-        "convert_json_keypoints.py",
-        input_csv_or_json,
-        video_or_image_folder,
-        metadata_path
-        ], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error running convert_json_keypoints.py: {e}")
         return
 
     # Proceed with CVAT task creation
