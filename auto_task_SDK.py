@@ -21,8 +21,6 @@ def parse_args():
     parser.add_argument("--task", default="Keypoint annotation", help="Name for the new task")
     parser.add_argument("--folder", help="Folder with media to upload",
                         default=r"C:\\Users\\audet\\OneDrive\\Desktop\\ULaval\\Stage 2025\\CVAT_pipeline")
-    parser.add_argument("--annotations", default=r"C:\\Users\\audet\\OneDrive\\Desktop\\ULaval\\Stage 2025\\CVAT_pipeline\\kpts.csv",
-                         help="Path to annotations.csv or annotations.json file")
     return parser.parse_args()
 
 def load_config():
