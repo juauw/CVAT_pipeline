@@ -7,7 +7,7 @@ This repository provides a semi-automated pipeline for preparing, importing, cor
 The pipeline supports the following workflows:
 
 - Conversion of raw metadata and annotations
-- Upload of annotations to CVAT via SDK
+- Upload of annotations to CVAT via SDK (only bounding boxes)
 - Manual correction (if needed) within CVAT
 - Export and post-processing of corrected annotations
 - Final merging of keypoints and bounding boxes into a single JSON
@@ -22,7 +22,7 @@ The pipeline supports the following workflows:
   Generates base metadata schema needed for CVAT import.
 
 - **raw.py**  
-  Uses metadata.py output to generate converted_metadata.json which is used to create the skeleton in the raw CVAT input.
+  Uses metadata.py output to generate skeleton.SVG which is used to create the skeleton in the CVAT skeleton constructor
 
 ### 2. Annotation Conversion
 
