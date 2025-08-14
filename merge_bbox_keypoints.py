@@ -22,7 +22,7 @@ if os.path.exists(zip_path):
 
 # Step 3: Rename and move JSON file to current directory
 annotations_dir = os.path.join(extract_dir, "annotations")
-old_path = os.path.join(annotations_dir, "person_keypoints_default.json")
+old_path = os.path.join(annotations_dir, "instances_default.json")
 new_path = os.path.join(".", output_filename)
 
 if os.path.exists(old_path):
@@ -88,4 +88,4 @@ merged_data = {
 # Saves the merged file without the COCO header
 with open("combined.json", "w") as f:
     json.dump(merged_data, f, indent=2)
-
+print("created combined.json file")
