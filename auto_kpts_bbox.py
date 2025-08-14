@@ -112,7 +112,7 @@ def build_coco_bbox_from_keypoints_json(kp_json_path: str) -> dict:
         if bbox:
             bbox_annotations.append(bbox)
 
-    # Use the first category from input
+    # Use the first category from input (common for single-class datasets)
     if not data.get("categories"):
         raise ValueError("No categories found in the keypoints JSON.")
 
@@ -135,17 +135,13 @@ def main():
     parser = argparse.ArgumentParser(
         description="Converts COCO Keypoints 1.0 to COCO 1.0 and imports the file to CVAT"
     )
-    parser.add_argument("--host", default="http://localhost:8080",
-                        help="CVAT server URL (e.g. http://localhost:8080)")
+    parser.add_argument("--host", default="http://localhost:8080", help="CVAT server URL (e.g. http://localhost:8080)")
     parser.add_argument("--username", required=True, help="CVAT username")
     parser.add_argument("--password", required=True, help="CVAT password")
-    parser.add_argument("--task-name", default="Bounding box annotation",
-                        help="Task name to create in CVAT")
+    parser.add_argument("--task-name", default="Bounding box annotation", help="Task name to create in CVAT")
     parser.add_argument("--label-name", default="mouse", help="Label name to assign to bounding boxes")
-    parser.add_argument("--folder", required=True,
-                        help="Path to folder of images OR a single video file")
-    parser.add_argument("--input", required=True,
-                        help="Path to input COCO Keypoints JSON or CVAT 1.1/XML with bboxes")
+    parser.add_argument("--folder", required=True, help="Path to folder of images OR a single video file")
+    parser.add_argument("--input", required=True, help="Path to input COCO Keypoints JSON or CVAT 1.1/XML with bboxes")
     args = parser.parse_args()
 
     # Detect if --folder is a video; if so, extract frames

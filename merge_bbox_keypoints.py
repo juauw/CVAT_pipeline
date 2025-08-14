@@ -7,9 +7,9 @@ import json
 from collections import defaultdict
 
 # Paths
-zip_path = "corrected_keypoints.zip"
-extract_dir = "corrected_keypoints"
-output_filename = "corrected_keypoints.json"
+zip_path = "corrected_bbox.zip"
+extract_dir = "corrected_bbox"
+output_filename = "corrected_bbox.json"
 
 # Step 1: Extract the zip file
 with zipfile.ZipFile(zip_path, 'r') as zip_ref:

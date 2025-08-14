@@ -1,5 +1,5 @@
-# This program takes two files that are named metadata.py and .json or .csv file and produces
-# a file named converted_bbox.json which is compatible with the CVAT bounding box import module.
+# This program takes two files that are named metadata.py and a .json or .csv file and produces
+# a file named converted_bbox.xml which is compatible with the CVAT bounding box import module.
 import argparse
 import csv
 import importlib.util
@@ -9,11 +9,9 @@ import sys
 from collections import defaultdict, namedtuple
 from typing import Dict, Any, List, Tuple, Optional
 from xml.etree.ElementTree import Element, SubElement, ElementTree
+import cv2
 
-try:
-    import cv2
-except Exception:
-    cv2 = None
+
 
 # Metadata loader
 def load_metadata(metadata_path: str) -> Dict[str, Any]:
@@ -34,8 +32,6 @@ def load_metadata(metadata_path: str) -> Dict[str, Any]:
 ImageInfo = namedtuple("ImageInfo", ["frame_id", "width", "height"])
 
 def read_video_resolution(video_path: str) -> Tuple[int, int]:
-    if cv2 is None:
-        raise RuntimeError("OpenCV not available; cannot read video resolution.")
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise IOError(f"Cannot open video file: {video_path}")
@@ -225,7 +221,6 @@ def build_cvat_xml(
             )
 
     return ElementTree(root)
-
 
 # Main
 def main():
