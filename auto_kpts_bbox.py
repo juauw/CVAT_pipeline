@@ -1,7 +1,6 @@
-#This script converts a COCO Keypoints 1.0 file to a COCO 1.0 file by estimating
-# bounding boxes based on the modified keypoints. After the script creates a new task
-# and automatically uploads the images and annotations to CVAT. It can also directly
-# upload bounding boxes to CVAT using the COCO 1.0 or CVAT 1.1 format.
+# This script converts a COCO Keypoints 1.0 file to a COCO 1.0 file by estimating
+# bounding boxes from keypoints, creates a CVAT task, uploads images, and imports
+# the bbox annotations. It can also upload XML bbox annotations directly.
 import argparse
 import os
 import json
@@ -11,8 +10,10 @@ from cvat_sdk.core.helpers import DeferredTqdmProgressReporter
 import zipfile
 import shutil
 import cv2
+import tempfile
+from typing import Optional
 
-# Auto-handle corrected_keypoints.zip if present
+# Auto-handle corrected_keypoints.zip
 zip_path = "corrected_keypoints.zip"
 extract_dir = "corrected_keypoints"
 output_filename = "corrected_keypoints.json"
@@ -36,6 +37,7 @@ if os.path.exists(zip_path):
     shutil.rmtree(extract_dir)
     print(f"Deleted extracted folder: {extract_dir}")
 
+
 def create_bbox_label(label_name):
     return [{
         "name": label_name,
@@ -44,7 +46,7 @@ def create_bbox_label(label_name):
         "attributes": []
     }]
 
-# Converts COCO Keypoints 1.0 to COCO 1.0 bounding boxes
+# Converts keypoints to bounding boxes
 def keypoints_to_bboxes(keypoints, image_id, category_id, annotation_id):
     x_coords = keypoints[0::3]
     y_coords = keypoints[1::3]
@@ -73,7 +75,7 @@ def keypoints_to_bboxes(keypoints, image_id, category_id, annotation_id):
         "id": annotation_id
     }
 
-# Cuts the video into its component frames
+# Splits the video up into frames
 def video_to_frames(video_path, output_dir):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -92,29 +94,67 @@ def video_to_frames(video_path, output_dir):
         success, frame = cap.read()
 
     cap.release()
-    print(f"Extracted {frame_count} frames to {output_dir}")
+    print(f"Extracted {frame_count} frames")
     return sorted(output_dir.glob("*.jpg"))
+
+
+# Builds a bounding box .json file
+def build_coco_bbox_from_keypoints_json(kp_json_path: str) -> dict:
+    with open(kp_json_path, "r") as f:
+        data = json.load(f)
+
+    bbox_annotations = []
+    for ann in data.get("annotations", []):
+        kp = ann.get("keypoints")
+        if not kp:
+            continue
+        bbox = keypoints_to_bboxes(kp, ann["image_id"], ann["category_id"], ann["id"])
+        if bbox:
+            bbox_annotations.append(bbox)
+
+    # Use the first category from input
+    if not data.get("categories"):
+        raise ValueError("No categories found in the keypoints JSON.")
+
+    first_cat = data["categories"][0]
+    coco_bbox = {
+        "info": data.get("info", {}),
+        "licenses": data.get("licenses", []),
+        "images": data.get("images", []),
+        "categories": [{
+            "id": first_cat["id"],
+            "name": first_cat["name"],
+            "supercategory": first_cat.get("supercategory", "")
+        }],
+        "annotations": bbox_annotations
+    }
+    return coco_bbox
 
 # Main
 def main():
-    parser = argparse.ArgumentParser(description="Convert COCO Keypoints to Bounding Boxes and import to CVAT.")
-    parser.add_argument("--host", default="http://localhost:8080", help="CVAT server URL (e.g. http://localhost:8080)")
+    parser = argparse.ArgumentParser(
+        description="Converts COCO Keypoints 1.0 to COCO 1.0 and imports the file to CVAT"
+    )
+    parser.add_argument("--host", default="http://localhost:8080",
+                        help="CVAT server URL (e.g. http://localhost:8080)")
     parser.add_argument("--username", required=True, help="CVAT username")
     parser.add_argument("--password", required=True, help="CVAT password")
-    parser.add_argument("--task-name", required=True, help="Task name to create in CVAT")
+    parser.add_argument("--task-name", default="Bounding box annotation",
+                        help="Task name to create in CVAT")
     parser.add_argument("--label-name", default="mouse", help="Label name to assign to bounding boxes")
-    parser.add_argument("--folder", required=True, help="Path to folder of images OR a single video file")
-    parser.add_argument("--input", required=True, help="Path to input COCO Keypoints JSON or CVAT 1.1/XML with bboxes")
-    parser.add_argument("--output-json", required=True, help="Path to output COCO Bounding Box JSON (ignored if XML input)")
+    parser.add_argument("--folder", required=True,
+                        help="Path to folder of images OR a single video file")
+    parser.add_argument("--input", required=True,
+                        help="Path to input COCO Keypoints JSON or CVAT 1.1/XML with bboxes")
     args = parser.parse_args()
 
-    # Detect if --folder is a video; if so, extract frames and remember to clean up
+    # Detect if --folder is a video; if so, extract frames
     folder_path = Path(args.folder)
-    frames_dir = None
+    frames_dir: Optional[Path] = None
     cleanup_frames_dir = False
 
     if folder_path.is_file() and folder_path.suffix.lower() in [".mp4", ".avi", ".mov", ".mkv", ".m4v", ".wmv"]:
-        print(f"Video detected: {folder_path}, converting to frames...")
+        print(f"Video detected in folder: converting to frames...")
         frames_dir = folder_path.parent / f"{folder_path.stem}_frames"
         video_to_frames(folder_path, frames_dir)
         image_folder = str(frames_dir)
@@ -122,43 +162,23 @@ def main():
     else:
         image_folder = args.folder
 
-    # If input is CVAT XML with bboxes, skip conversion
-    skip_conversion = os.path.splitext(args.input)[1].lower() in [".xml"]
-    if skip_conversion:
-        print("BBox XML detected — skipping keypoint-to-bbox conversion.")
-        output_for_import = args.input  # import XML directly
+    # Decide import format
+    input_ext = os.path.splitext(args.input)[1].lower()
+    import_format = None
+    temp_json_path = None
+
+    if input_ext == ".xml":
+        print("XML detected — will import CVAT 1.1 directly")
+        output_for_import = args.input
         import_format = "CVAT 1.1"
     else:
-        print("Converting keypoints to bounding boxes...")
-        with open(args.input, "r") as f:
-            data = json.load(f)
-
-        bbox_annotations = []
-        for ann in data.get("annotations", []):
-            kp = ann.get("keypoints")
-            if not kp:
-                continue
-            bbox = keypoints_to_bboxes(kp, ann["image_id"], ann["category_id"], ann["id"])
-            if bbox:
-                bbox_annotations.append(bbox)
-
-        coco_bbox = {
-            "info": data.get("info", {}),
-            "licenses": data.get("licenses", []),
-            "images": data.get("images", []),
-            "categories": [{
-                "id": data["categories"][0]["id"],
-                "name": data["categories"][0]["name"],
-                "supercategory": data["categories"][0].get("supercategory", "")
-            }],
-            "annotations": bbox_annotations
-        }
-
-        with open(args.output_json, "w") as f:
-            json.dump(coco_bbox, f)
-        print(f"Bounding boxes extracted and saved to {args.output_json}")
-
-        output_for_import = args.output_json
+        print("Converting COCO keypoints to COCO bounding boxes...")
+        coco_bbox = build_coco_bbox_from_keypoints_json(args.input)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tmp:
+            json.dump(coco_bbox, tmp)
+            temp_json_path = tmp.name
+        print(f"Prepared COCO bbox file")
+        output_for_import = temp_json_path
         import_format = "COCO 1.0"
 
     # Create task, upload, import annotations
@@ -187,16 +207,17 @@ def main():
             )
             print("Bounding box annotations imported successfully.")
     finally:
-        # Clean up extracted frames if we generated them
+        # Clean up extracted frames
         if cleanup_frames_dir and frames_dir and frames_dir.exists():
             try:
                 shutil.rmtree(frames_dir)
-                print(f"Cleaned up extracted frames folder: {frames_dir}")
+                print(f"Cleaned up extracted frames folder")
             except Exception as e:
-                print(f"Warning: failed to remove frames folder {frames_dir}: {e}")
+                print(f"Warning: failed to remove frames folder: {e}")
 
 if __name__ == "__main__":
     main()
+
 
 
 
