@@ -47,3 +47,5 @@ The pipeline supports the following workflows:
 
 - **merge_bbox_keypoints.py**  
   Merges corrected_keypoints.json and corrected_bbox.json into a unified combined.json file.
+  
+Note: export.py is a small utility function that can be used to quickly decompress and rename CVAT exports
